@@ -15,6 +15,10 @@
          get_aggregate_counters/0,
          state_change/2]).
 
+-export([mk_state/1,
+         get_local_counter_details/0,
+         update_counter/2]).
+
 -include_lib("eunit/include/eunit.hrl").
 -include("pushy_sql.hrl").
 
@@ -26,6 +30,9 @@ setup_aggregate_counters() ->
 
 get_aggregate_counters() ->
     [ {State, gproc:lookup_local_aggr_counter(mk_state(State))} || State <- [total | ?HEARTBEAT_STATES] ].
+
+get_local_counter_details() ->
+    [ {State, gproc:lookup_local_counters(mk_state(State))} || State <- [total | ?HEARTBEAT_STATES] ].
 
 
 setup_counters(State) ->
