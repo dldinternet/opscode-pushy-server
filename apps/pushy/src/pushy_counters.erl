@@ -35,7 +35,6 @@ get_aggregate_counters() ->
 get_local_counter_details() ->
     [ {State, gproc:lookup_local_counters(mk_state(State))} || State <- [total | ?HEARTBEAT_STATES] ].
 
-
 setup_counters(State) ->
     [ gproc:add_local_counter(mk_state(S), 0) || S <- [total | ?HEARTBEAT_STATES] ],
     update_counter(State,1),
@@ -47,13 +46,16 @@ state_change(Old, New) ->
 
 update_counter(State, Incr) ->
     try
-        gproc:update_counter({c,l,mk_state(State)},  Incr)
+        gproc:update_counter(mk_cname(State),  Incr)
     catch
         error:X ->
             ?debugVal(gproc:lookup_local_counters(mk_state(State))),
             ?debugVal(X),
             ?debugVal(erlang:get_stacktrace())
     end.
+
+mk_cname(State) ->
+    {c, l, mk_state(State)}.
 
 state_map(idle) -> idle;
 state_map(ready) -> ready;
