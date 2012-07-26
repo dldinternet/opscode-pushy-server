@@ -21,24 +21,59 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(HEARTBEAT_STATES, [down, idle, ready, running, restarting, up, crashed]).
+-define(HEARTBEAT_STATES, [down, idle, ready, running, restarting, up, crasheds]).
+-define(HEARTBEAT_STATES_TOTAL, [total | ?HEARTBEAT_STATES]).
 
 % Set up aggregate counters to track the state of the system
 % This may not be the right place for this.
 %
+
+reg(Name, Value) ->
+    try
+        gproc:reg(Name, Value)
+    catch
+        error:X ->
+            ?debugVal(X),
+            ?debugVal(Name),
+            ?debugVal(erlang:get_stacktrace())
+    end.
+
+gpw(S) ->
+    try
+        gproc:add_local_aggr_counter(mk_state(S))
+    catch
+        error:X ->
+            ?debugVal(X),
+            ?debugVal(S),
+            ?debugVal(erlang:get_stacktrace())
+    end.
+
 setup_aggregate_counters() ->
-    [ gproc:add_local_aggr_counter(mk_state(S)) || S <- [total | ?HEARTBEAT_STATES] ].
+    try
+%        [ gproc:add_local_aggr_counter(mk_state(S)) || S <- ?HEARTBEAT_STATES_TOTAL] ]
+        [ gpw(S) || S <- [total | ?HEARTBEAT_STATES_TOTAL] ]
+    catch
+        error:X ->
+            ?debugVal(X),
+            ?debugVal(erlang:get_stacktrace())
+    end.
 
 get_aggregate_counters() ->
-    [ {State, gproc:lookup_local_aggr_counter(mk_state(State))} || State <- [total | ?HEARTBEAT_STATES] ].
+    [ {State, gproc:lookup_local_aggr_counter(mk_state(State))} || State <- ?HEARTBEAT_STATES_TOTAL ].
 
 get_local_counter_details() ->
-    [ {State, gproc:lookup_local_counters(mk_state(State))} || State <- [total | ?HEARTBEAT_STATES] ].
+    [ {State, gproc:lookup_local_counters(mk_state(State))} || State <- ?HEARTBEAT_STATES_TOTAL ].
 
 setup_counters(State) ->
-    [ gproc:add_local_counter(mk_state(S), 0) || S <- [total | ?HEARTBEAT_STATES] ],
-    update_counter(State,1),
-    update_counter(total,1).
+    try 
+        [ reg(mk_counter(S), 0) || S <- ?HEARTBEAT_STATES_TOTAL ],
+        update_counter(State,1),
+        update_counter(total,1)
+    catch
+        error:X ->
+            ?debugVal(X),
+            ?debugVal(erlang:get_stacktrace())
+    end.
 
 state_change(Old, New) ->
     update_counter(Old, -1),
@@ -57,12 +92,19 @@ update_counter(State, Incr) ->
 mk_cname(State) ->
     {c, l, mk_state(State)}.
 
+state_map(total) -> total;
+state_map(crashed) -> crashed;
+state_map(up) -> up;
+state_map(down) -> down;
 state_map(idle) -> idle;
 state_map(ready) -> ready;
-state_map(running) -> running;
 state_map(restarting) -> restarting;
-state_map(down) -> down;
-state_map(_) -> bad.
+state_map(running) -> running.
 
 mk_state(State) ->
     {node_state, state_map(State)}.
+
+%%mk_aggr_counter(State) ->
+%%    {a, l, {node_state, state_map(State)}}.
+mk_counter(State) ->
+    {c, l, {node_state, state_map(State)}}.
