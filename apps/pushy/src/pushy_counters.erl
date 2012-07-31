@@ -21,7 +21,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(HEARTBEAT_STATES, [down, idle, ready, running, restarting, up, crasheds]).
+-define(HEARTBEAT_STATES, [down, idle, ready, running, restarting, up, crashed]).
 -define(HEARTBEAT_STATES_TOTAL, [total | ?HEARTBEAT_STATES]).
 
 % Set up aggregate counters to track the state of the system
