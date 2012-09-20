@@ -69,7 +69,11 @@ init([#pushy_state{ctx=Ctx, incarnation_id=IncarnationId }]) ->
     Interval = envy:get(pushy, heartbeat_interval, integer),
 
     {ok, HeartbeatSock} = erlzmq:socket(Ctx, pub),
-    {ok, PrivateKey} = chef_keyring:get_key(pushy_priv),
+    PrivateKey = case chef_keyring:get_key(pushy_priv) of
+                     {ok, Key} -> Key;
+                     _ -> 
+                         lager:error("No key found looking for ~s found ~s", [pushy_priv, chef_keyring:list_keys()])
+                 end,
 
     HeartbeatAddress = pushy_util:make_zmq_socket_addr(server_heartbeat_port),
 
