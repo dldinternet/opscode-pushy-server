@@ -68,8 +68,8 @@ init([#pushy_state{ctx=_Ctx} = PushyState]) ->
                 ?WORKER(pushy_command_switch, [PushyState]),
 
                 %% Wait until everyone else is up before starting heartbeats and accepting reqs.
-                ?WORKERNL(webmachine_mochiweb, [WebMachineConfig])  %% FIXME start or start_link here?
-                ?WORKER(pushy_heartbeat_generator, [PushyState]),
+                ?WORKERNL(webmachine_mochiweb, [WebMachineConfig]),  %% FIXME start or start_link here?
+                ?WORKER(pushy_heartbeat_generator, [PushyState])
                ],
     {ok, {{one_for_one, 60, 120},
          maybe_run_graphite(EnableGraphite, Workers)}}.
