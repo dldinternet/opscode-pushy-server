@@ -57,13 +57,19 @@ init([#pushy_state{ctx=_Ctx} = PushyState]) ->
                         {dispatch, Dispatch},
                         {enable_perf_logger, true}],
     ?debugVal(WebMachineConfig),
-    Workers = [?SUP(pushy_node_state_sup, []),
-                ?SUP(pushy_job_state_sup, []),
+    Workers = [ %% start out with basic services
                 ?WORKER(chef_keyring, []),
+
+                %% Persistence engines
                 ?WORKER(pushy_node_status_updater, []),
-                ?WORKER(pushy_heartbeat_generator, [PushyState]),
+
+                ?SUP(pushy_node_state_sup, []),
+                ?SUP(pushy_job_state_sup, []),
                 ?WORKER(pushy_command_switch, [PushyState]),
+
+                %% Wait until everyone else is up before starting heartbeats and accepting reqs.
                 ?WORKERNL(webmachine_mochiweb, [WebMachineConfig])  %% FIXME start or start_link here?
+                ?WORKER(pushy_heartbeat_generator, [PushyState]),
                ],
     {ok, {{one_for_one, 60, 120},
          maybe_run_graphite(EnableGraphite, Workers)}}.
