@@ -161,7 +161,7 @@ do_send(#state{addr_node_map = AddrNodeMap,
         Method, NodeRef, Message) ->
     Key = get_key_for_method(Method, State, NodeRef),
     Address = addr_node_map_lookup_by_node(AddrNodeMap, NodeRef),
-    Packets = ?TIME_IT(pushy_messaging, make_message, (proto_v2, Method, Key, Message)),
+    Packets = pushy_messaging:make_message(proto_v2, Method, Key, Message),
     ok = pushy_messaging:send_message(CommandSocket, [Address | Packets]),
     State.
 
