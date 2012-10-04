@@ -92,7 +92,8 @@ to_json(Req, #config_state{orgname = OrgName, organization_guid = OrgGuid, noden
           {<<"session_key">>, KeyStruct},
           {<<"lifetime">> ,3600}
          ]},
-    ?debugVal(ConfigurationStruct),
+    %% ?debugVal(ConfigurationStruct),
+    lager:debug("Configured org/node ~s/~s", [OrgName, NodeName]),
     ConfigurationJson = jiffy:encode(ConfigurationStruct),
 
     % ?debugVal(ConfigurationJson),
