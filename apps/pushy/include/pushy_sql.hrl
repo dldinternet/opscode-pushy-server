@@ -6,6 +6,14 @@
 % node status
 -type node_status() :: up |
                        down.
+%% node heartbeat status
+-type heartbeat_status() :: idle |
+                            ready |
+                            running |
+                            restarting |
+                            down.
+
+-define(HEARTBEAT_STATES, [down, idle, ready, running, restarting]).
 
 %% job status
 -type job_status() :: voting |
