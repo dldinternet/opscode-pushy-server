@@ -20,7 +20,8 @@
          update_counter/2]).
 
 -include_lib("eunit/include/eunit.hrl").
--include("pushy_sql.hrl").
+
+-define(HEARTBEAT_STATES, [down, idle, ready, running, restarting, up, crashed]).
 
 % Set up aggregate counters to track the state of the system
 % This may not be the right place for this.
@@ -54,5 +55,12 @@ update_counter(State, Incr) ->
             ?debugVal(erlang:get_stacktrace())
     end.
 
+state_map(idle) -> idle;
+state_map(ready) -> ready;
+state_map(running) -> running;
+state_map(restarting) -> restarting;
+state_map(down) -> down;
+state_map(_) -> bad.
+
 mk_state(State) ->
-    {node_state, State}.
+    {node_state, state_map(State)}.
