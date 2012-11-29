@@ -14,7 +14,9 @@
 -record(metric, {node_pid :: pid(),
                  avg=down_threshold() * 2 :: float(),
                  interval_start=now_as_int() :: pos_integer(),
-                 heartbeats=1 :: pos_integer()}).
+                 heartbeats=1 :: pos_integer(),
+                 last_heartbeat :: {pos_integer(), pos_integer(), pos_integer()}
+                }).
 
 %% These two weights must total to 1.0
 -define(NOW_WEIGHT, (1.0/decay_window())).
@@ -82,7 +84,9 @@ scan(NodePid) ->
 
 hb(#metric{}=Node) ->
     Node1 = maybe_advance_interval(Node),
-    Node1#metric{heartbeats=Node1#metric.heartbeats + 1}.
+    Node1#metric{heartbeats=Node1#metric.heartbeats + 1,
+                 last_heartbeat = os:timestamp()
+                }.
 
 
 evaluate_node_health(Node) ->
