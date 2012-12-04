@@ -236,7 +236,7 @@ send_info(NodeRef, Message) ->
 
 force_abort(State) ->
     Message = {[{type, abort}]},
-    State1 = do_send(State, Message),
+    State1 = do_send_async(State, Message),
     TRef = timer:send_after(rehab_interval(), rehab_again),
     State1#state{state_timer=TRef}.
 
@@ -381,9 +381,9 @@ key_fetch(Method, EJson) ->
     NodeRef = get_node_ref(EJson),
     get_key_for_method(Method, NodeRef).
 
--spec do_send(#state{}, json_term()) -> #state{}.
-do_send(State, Message) ->
-    do_send(State, hmac_sha256, Message).
+%% -spec do_send(#state{}, json_term()) -> #state{}.
+%% do_send(State, Message) ->
+%%     do_send(State, hmac_sha256, Message).
 
 -spec do_send(#state{}, atom(), json_term()) -> #state{}.
 do_send(#state{node_addr=NodeAddr, node_ref=NodeRef} = State, Method, Message) ->
@@ -391,6 +391,18 @@ do_send(#state{node_addr=NodeAddr, node_ref=NodeRef} = State, Method, Message) -
     Packets = ?TIME_IT(pushy_messaging, make_message, (proto_v2, Method, Key, Message)),
     ok = pushy_command_switch:send([NodeAddr | Packets]),
     State.
+
+-spec do_send_async(#state{}, json_term()) -> #state{}.
+do_send_async(State, Message) ->
+    do_send_async(State, hmac_sha256, Message).
+
+-spec do_send_async(#state{}, atom(), json_term()) -> #state{}.
+do_send_async(#state{node_addr=NodeAddr, node_ref=NodeRef} = State, Method, Message) ->
+    {ok, Key} = get_key_for_method(Method, NodeRef),
+    Packets = ?TIME_IT(pushy_messaging, make_message, (proto_v2, Method, Key, Message)),
+    ok = pushy_command_switch:send_async([NodeAddr | Packets]),
+    State.
+
 
 message_type_to_atom(<<"aborted">>) -> aborted;
 message_type_to_atom(<<"ack_commit">>) -> ack_commit;
