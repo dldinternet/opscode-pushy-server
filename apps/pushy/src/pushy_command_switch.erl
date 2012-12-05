@@ -14,8 +14,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/2,
-         send_async/1,
+-export([start_link/1,
          send/1]).
 
 %% ------------------------------------------------------------------
@@ -46,8 +45,8 @@
 
 -define(PUSHY_MULTI_SEND_CROSSOVER, 100).
 
--record(state, {r_sock,
-                s_sock}).
+-record(state,
+        {command_sock}).
 
 -type addressed_message() :: [binary()]. % TODO Improve; it might be worth turning this into a tuple for better specificity.
 
@@ -55,40 +54,26 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(PushyState, Id) ->
-    gen_server:start_link(?MODULE, [PushyState, Id], []).
+start_link(PushyState) ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [PushyState], []).
 
--spec send_async([binary()]) -> ok | {error, atom()}.
-send_async(Message) ->
-    case select_switch() of
-        {ok, Pid} ->
-            gen_server:cast(Pid, {send, Message});
-        Error ->
-            Error
-    end.
-
--spec send([binary()]) -> ok | {error, atom()}.
+-spec send([binary()]) -> ok.
 send(Message) ->
-    case select_switch() of
-        {ok, Pid} ->
-            gen_server:call(Pid, {send, Message});
-        Error ->
-            lager:error("Unable to send message. No command switch processes found!~nError: ~p~n", [Error]),
-            Error
-    end.
+    gen_server:call(?MODULE, {send, Message}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
-init([#pushy_state{ctx=Ctx}, Id]) ->
-    {ok, Recv} = erlzmq:socket(Ctx, [pull, {active, true}]),
-    {ok, Send} = erlzmq:socket(Ctx, [push, {active, false}]),
-    [erlzmq:setsockopt(Sock, linger, 0) || Sock <- [Recv, Send]],
-    ok = erlzmq:connect(Recv, ?PUSHY_BROKER_IN),
-    ok = erlzmq:connect(Send, ?PUSHY_BROKER_OUT),
-    State = #state{r_sock=Recv, s_sock=Send},
-    true = gproc:reg({n, l, {?MODULE, Id}}),
+init([#pushy_state{ctx=Ctx}]) ->
+    CommandAddress = pushy_util:make_zmq_socket_addr(command_port),
+
+    lager:info("Starting command mux listening on ~s.", [CommandAddress]),
+
+    {ok, CommandSock} = erlzmq:socket(Ctx, [router, {active, true}]),
+    ok = erlzmq:setsockopt(CommandSock, linger, 0),
+    ok = erlzmq:bind(CommandSock, CommandAddress),
+    State = #state{command_sock = CommandSock},
     {ok, State}.
 
 handle_call({send, Message}, _From, #state{}=State) ->
@@ -97,19 +82,16 @@ handle_call({send, Message}, _From, #state{}=State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({send, Message}, #state{}=State) ->
-    NState = ?TIME_IT(?MODULE, do_send, (State, Message)),
-    {noreply, NState};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({zmq, Recv, Frame, [rcvmore]}, #state{r_sock=Recv}=State) ->
-    {noreply, ?TIME_IT(?MODULE, do_receive, (Recv, Frame, State))};
+handle_info({zmq, CommandSock, Frame, [rcvmore]}, State) ->
+    {noreply, ?TIME_IT(?MODULE, do_receive, (CommandSock, Frame, State))};
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{r_sock=Recv, s_sock=Send}) ->
-    [erlzmq:close(Sock) || Sock <- [Recv, Send]],
+terminate(_Reason, #state{command_sock=CommandSock}) ->
+    erlzmq:close(CommandSock),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -119,10 +101,10 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-do_receive(Recv, Frame, State) ->
+do_receive(CommandSock, Frame, State) ->
     %% TODO: This needs a more graceful way of handling message sequences. I really feel like we need to
     %% abstract out some more generalized routines to handle the message receipt process.
-    case pushy_messaging:receive_message_async(Recv, Frame) of
+    case pushy_messaging:receive_message_async(CommandSock, Frame) of
         [_Address, _Header, _Body] = Message->
             lager:debug("RECV: ~s~nRECV: ~s~nRECV: ~s~n",
                        [pushy_tools:bin_to_hex(_Address), _Header, _Body]),
@@ -137,26 +119,9 @@ do_receive(Recv, Frame, State) ->
 %%% Send a message to a single node
 %%%
 -spec do_send(#state{}, addressed_message()) -> #state{}.
-do_send(#state{s_sock=Send}=State, RawMessage) ->
+do_send(#state{command_sock = CommandSocket}=State, RawMessage) ->
     [_Address, _Header, _Body] = RawMessage,
     lager:debug("SEND: ~s~nSEND: ~s~nSEND: ~s~n",
                [pushy_tools:bin_to_hex(_Address), _Header, _Body]),
-    ok = pushy_messaging:send_message(Send, RawMessage),
+    ok = pushy_messaging:send_message(CommandSocket, RawMessage),
     State.
-
-%%%
-%%% Randomly select a command switch process to use
-%%%
--spec select_switch() -> {ok, pid()} | {error, no_switches}.
-select_switch() ->
-    case gproc:select({local, names}, [{{{n,l,{?MODULE, '_'}},'_','_'},[],['$_']}]) of
-        [] ->
-            {error, no_switches};
-        [Switch] ->
-            {_, Pid, _} = Switch,
-            {ok, Pid};
-        Switches ->
-            Pos = random:uniform(length(Switches)),
-            {_, Pid, _} = lists:nth(Pos, Switches),
-            {ok, Pid}
-    end.

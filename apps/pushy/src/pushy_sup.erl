@@ -17,7 +17,6 @@
 %% Helper macro for declaring children of supervisor
 -define(SUP(I, Args), {I, {I, start_link, Args}, permanent, infinity, supervisor, [I]}).
 -define(WORKER(I, Args), {I, {I, start_link, Args}, permanent, 5000, worker, [I]}).
--define(MWORKER(I, Mod, Args), {I, {Mod, start_link, Args}, permanent, 5000, worker, [I]}).
 -define(WORKERNL(I, Args), {I, {I, start, Args}, permanent, 5000, worker, [I]}).
 %% ===================================================================
 %% API functions
@@ -57,17 +56,14 @@ init([#pushy_state{ctx=_Ctx} = PushyState]) ->
                         {log_dir, LogDir},
                         {dispatch, Dispatch},
                         {enable_perf_logger, true}],
-    Workers1 = [?WORKER(pushy_node_stats_scanner, []),
-                ?WORKER(chef_keyring, []),
-                ?WORKER(pushy_heartbeat_generator, [PushyState]),
-                ?WORKER(pushy_broker, [PushyState])],
-    Switches = start_switches(5, PushyState, []),
-    Workers2 = [?SUP(pushy_node_state_sup, []),
-                ?SUP(pushy_job_state_sup, []),
-                ?WORKER(pushy_node_status_updater, []),
-                ?WORKERNL(webmachine_mochiweb, [WebMachineConfig])  %% FIXME start or start_link here?
+    Workers = [?WORKER(pushy_node_stats_scanner, []),
+               ?WORKER(chef_keyring, []),
+               ?WORKER(pushy_heartbeat_generator, [PushyState]),
+               ?WORKER(pushy_command_switch, [PushyState]),
+               ?SUP(pushy_node_state_sup, []),
+               ?SUP(pushy_job_state_sup, []),
+               ?WORKERNL(webmachine_mochiweb, [WebMachineConfig])  %% FIXME start or start_link here?
                ],
-    Workers = Workers1 ++ Switches ++ Workers2,
     pushy_node_stats:init(),
     {ok, {{one_for_one, 60, 120},
          maybe_run_graphite(EnableGraphite, Workers)}}.
@@ -77,10 +73,3 @@ maybe_run_graphite(true, Workers) ->
     [?SUP(folsom_graphite_sup, []) | Workers];
 maybe_run_graphite(false, Workers) ->
     Workers.
-
-start_switches(0, _PushyState, Switches) ->
-    Switches;
-start_switches(Count, PushyState, Switches) ->
-    Id = list_to_atom("pushy_command_switch_" ++ integer_to_list(Count)),
-    start_switches(Count - 1, PushyState,
-                   [?MWORKER(Id, pushy_command_switch, [PushyState, Count])|Switches]).

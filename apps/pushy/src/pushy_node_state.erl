@@ -37,6 +37,7 @@
                 node_addr             :: node_addr(),
                 heartbeats = 1        :: pos_integer(),
                 job                   :: any(),
+                availability          :: node_availability(),
                 watchers = [],
                 state_timer
                }).
@@ -101,7 +102,7 @@ rehab(NodeRef) ->
 
 
 init([NodeRef, NodeAddr]) ->
-    State = #state{node_ref = NodeRef, node_addr = NodeAddr},
+    State = #state{node_ref = NodeRef, node_addr = NodeAddr, availability=unavailable},
     GprocName = pushy_node_state_sup:mk_gproc_name(NodeRef),
     GprocAddr = pushy_node_state_sup:mk_gproc_addr(NodeAddr),
     try
@@ -111,7 +112,6 @@ init([NodeRef, NodeAddr]) ->
         true = gproc:reg({n, l, GprocName}),
         true = gproc:reg({n, l, GprocAddr}),
         State1 = force_abort(State),
-        pushy_node_status_updater:create(NodeRef, ?POC_ACTOR_ID, shutdown),
         {ok, state_transition(init, rehab, State1), State1}
     catch
         error:badarg ->
@@ -128,26 +128,29 @@ init([NodeRef, NodeAddr]) ->
 
 rehab(aborted, #state{state_timer=TRef}=State) ->
     timer:cancel(TRef),
-    {next_state, state_transition(rehab, idle, State), State};
+    State1 = State#state{availability=available},
+    {next_state, state_transition(rehab, idle, State1), State1};
 rehab(Message, #state{node_ref=NodeRef}=State) ->
     lager:info("~p in rehab. Ignoring message: ~p~n", [NodeRef, Message]),
     {next_state, rehab, State}.
 
 idle(rehab, State) ->
     force_abort(State),
-    {next_state, state_transition(idle, rehab, State), State};
+    State1 = State#state{availability=unavailable},
+    {next_state, state_transition(idle, rehab, State1), State1};
 idle({job, Job}, State) ->
-    {next_state, state_transition(idle, running, State), State#state{job=Job}};
+    State1 = State#state{job=Job, availability=unavailable},
+    {next_state, state_transition(idle, running, State1), State1};
 idle(aborted, State) ->
     {next_state, idle, State}.
 
 running(aborted, #state{node_ref=NodeRef}=State) ->
     lager:info("~p aborted during job.~n", [NodeRef]),
-    State1 = State#state{job=undefined},
+    State1 = State#state{job=undefined, availability=available},
     {next_state, state_transition(running, idle, State1), State1};
 running({complete, Job}, #state{job=Job, node_ref=NodeRef}=State) ->
     lager:info("~p completed job.~n", [NodeRef]),
-    State1 = State#state{job=undefined},
+    State1 = State#state{job=undefined, availability=available},
     {next_state, state_transition(running, idle, State1), State1}.
 
 handle_event(_Event, StateName, State) ->
@@ -236,13 +239,15 @@ send_info(NodeRef, Message) ->
 
 force_abort(State) ->
     Message = {[{type, abort}]},
-    State1 = do_send_async(State, Message),
+    State1 = do_send(State, Message),
     TRef = timer:send_after(rehab_interval(), rehab_again),
     State1#state{state_timer=TRef}.
 
-state_transition(Current, New, #state{node_ref=NodeRef, watchers=Watchers}) ->
+state_transition(Current, New,
+        #state{node_ref=NodeRef, watchers=Watchers, availability=Availability}) ->
     lager:debug("~p transitioning from ~p to ~p~n", [NodeRef, Current, New]),
-    pushy_node_status_updater:update(NodeRef, ?POC_ACTOR_ID, New),
+    GprocName = pushy_node_state_sup:mk_gproc_name(NodeRef),
+    gproc:set_value({n, l, GprocName}, Availability),
     notify_watchers(Watchers, NodeRef, Current, New),
     New.
 
@@ -381,9 +386,9 @@ key_fetch(Method, EJson) ->
     NodeRef = get_node_ref(EJson),
     get_key_for_method(Method, NodeRef).
 
-%% -spec do_send(#state{}, json_term()) -> #state{}.
-%% do_send(State, Message) ->
-%%     do_send(State, hmac_sha256, Message).
+-spec do_send(#state{}, json_term()) -> #state{}.
+do_send(State, Message) ->
+    do_send(State, hmac_sha256, Message).
 
 -spec do_send(#state{}, atom(), json_term()) -> #state{}.
 do_send(#state{node_addr=NodeAddr, node_ref=NodeRef} = State, Method, Message) ->
@@ -391,18 +396,6 @@ do_send(#state{node_addr=NodeAddr, node_ref=NodeRef} = State, Method, Message) -
     Packets = ?TIME_IT(pushy_messaging, make_message, (proto_v2, Method, Key, Message)),
     ok = pushy_command_switch:send([NodeAddr | Packets]),
     State.
-
--spec do_send_async(#state{}, json_term()) -> #state{}.
-do_send_async(State, Message) ->
-    do_send_async(State, hmac_sha256, Message).
-
--spec do_send_async(#state{}, atom(), json_term()) -> #state{}.
-do_send_async(#state{node_addr=NodeAddr, node_ref=NodeRef} = State, Method, Message) ->
-    {ok, Key} = get_key_for_method(Method, NodeRef),
-    Packets = ?TIME_IT(pushy_messaging, make_message, (proto_v2, Method, Key, Message)),
-    ok = pushy_command_switch:send_async([NodeAddr | Packets]),
-    State.
-
 
 message_type_to_atom(<<"aborted">>) -> aborted;
 message_type_to_atom(<<"ack_commit">>) -> ack_commit;

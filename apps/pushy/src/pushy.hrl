@@ -9,6 +9,3 @@
           ctx :: any(),
           incarnation_id :: binary()
          }).
-
--define(PUSHY_BROKER_IN, "inproc://pushy-broker-in").
--define(PUSHY_BROKER_OUT, "inproc://pushy-broker-out").
