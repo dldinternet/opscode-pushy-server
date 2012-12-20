@@ -62,7 +62,6 @@ init([#pushy_state{ctx=_Ctx} = PushyState]) ->
     Switches = start_switches(5, PushyState, []),
     Workers2 = [?SUP(pushy_node_state_sup, []),
                 ?SUP(pushy_job_state_sup, []),
-                ?WORKER(pushy_node_status_updater, []),
                 ?WORKERNL(webmachine_mochiweb, [WebMachineConfig])  %% FIXME start or start_link here?
                ],
     Workers = Workers1 ++ Switches ++ Workers2,
