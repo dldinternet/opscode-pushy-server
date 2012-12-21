@@ -343,7 +343,7 @@ process_and_dispatch_message([Address, Header, Body], State) ->
                  {ok, #pushy_message{} = Msg} ->
                      {ok, process_message(State, Msg)};
                  {error, #pushy_message{validated=bad_sig}} ->
-                     lager:error("Command message failed verification: header=~s", [Header]),
+                     lager:error("Command message failed verification: header=~s body=~s", [Header, Body]),
                      {ok, State}
              catch
                  error:Error ->
