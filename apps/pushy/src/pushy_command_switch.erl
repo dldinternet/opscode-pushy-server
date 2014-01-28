@@ -89,12 +89,16 @@ switch_processes_fun()->
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
-init([#pushy_state{ctx=Ctx}, Id]) ->
-    {ok, Recv} = erlzmq:socket(Ctx, [pull, {active, true}]),
-    {ok, Send} = erlzmq:socket(Ctx, [push, {active, false}]),
-    [erlzmq:setsockopt(Sock, linger, 0) || Sock <- [Recv, Send]],
-    ok = erlzmq:connect(Recv, ?PUSHY_BROKER_IN),
-    ok = erlzmq:connect(Send, ?PUSHY_BROKER_OUT),
+init([#pushy_state{}, Id]) ->
+    {ok, Recv} = gen_zmq:new_socket(pull),
+    ok = gen_zmq:setopts(Recv, [{active, true}]),
+
+    {ok, Send} = gen_zmq:new_socket(push),
+    ok = gen_zmq:setopts(Send, [{active, false}]),
+
+%%    [erlzmq:setsockopt(Sock, linger, 0) || Sock <- [Recv, Send]],
+    ok = gen_zmq:connect(Recv, ?PUSHY_BROKER_IN),
+    ok = gen_zmq:connect(Send, ?PUSHY_BROKER_OUT),
     State = #state{r_sock=Recv, s_sock=Send},
     true = gproc:reg({n, l, {?MODULE, Id}}),
     {ok, State}.
@@ -114,8 +118,8 @@ handle_info(_Info, State) ->
     {noreply, State}.
 
 terminate(_Reason, #state{r_sock=Recv, s_sock=Send}) ->
-    erlzmq:close(Recv),
-    erlzmq:close(Send),
+    gen_zmq:close(Recv),
+    gen_zmq:close(Send),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->

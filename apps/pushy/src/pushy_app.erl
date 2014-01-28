@@ -34,15 +34,9 @@ start(_StartType, _StartArgs) ->
 
             error_logger:info_msg("Starting Pushy incarnation ~s.~n", [IncarnationId]),
 
-            IoProcesses = envy:get(pushy, zmq_io_processes, 1, integer),
-            case erlzmq:context(IoProcesses) of
-                {ok, Ctx} ->
-                    case pushy_sup:start_link(#pushy_state{ctx=Ctx, incarnation_id=IncarnationId}) of
-                        {ok, Pid} -> {ok, Pid, Ctx};
-                        Error ->
-                            stop(Ctx),
-                            Error
-                    end;
+
+            case pushy_sup:start_link(#pushy_state{incarnation_id=IncarnationId}) of
+                {ok, Pid} -> {ok, Pid, fake_context};
                 Error ->
                     Error
             end;
@@ -51,6 +45,5 @@ start(_StartType, _StartArgs) ->
                            "Server startup aborted because only 1 core was detected."),
             erlang:halt(1)
     end.
-
-stop(Ctx) ->
-    erlzmq:term(Ctx, 5000).
+stop(_) ->
+    ok.

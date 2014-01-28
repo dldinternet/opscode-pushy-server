@@ -9,7 +9,7 @@
   {applications, [
                   kernel,
                   stdlib,
-                  erlzmq,
+                  gen_zmq,
                   ibrowse,
                   jiffy,
                   gproc,
