@@ -112,7 +112,7 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({zmq, CommandSock, Frame, [rcvmore]}, State) ->
+handle_info({zmq, CommandSock, Frame, recvmore}, State) ->
     {noreply, ?TIME_IT(?MODULE, do_receive, (CommandSock, Frame, State))};
 handle_info(_Info, State) ->
     {noreply, State}.

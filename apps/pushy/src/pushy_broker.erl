@@ -55,31 +55,19 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% Incoming traffic goes to command switches
-handle_info({zmq, FE, _Msg}, #state{frontend=FE, backend_in=_BEI}=State) ->
-    lager:info("Getting a new-style zmq message!"),
+handle_info({zmq, FE, Msg}, #state{frontend=FE, backend_in=BEI}=State) ->
+    gen_zmq:write(BEI, {Msg, false}),
     {noreply, State};
-handle_info({zmq, FE, Msg, Flags}, #state{frontend=FE, backend_in=BEI}=State) ->
-    lager:info("Writing a message: ~p", [Msg]),
-    case proplists:get_bool(rcvmore, Flags) of
-        true ->
-            gen_zmq:write(BEI, {Msg, true});
-        false ->
-            gen_zmq:write(BEI, {Msg, false})
-    end,
+handle_info({zmq, FE, Msg, recvmore}, #state{frontend=FE, backend_in=BEI}=State) ->
+    gen_zmq:write(BEI, {Msg, true}),
     {noreply, State};
 
 %% Command switches send traffic out
-handle_info({zmq, BEO, _Msg}, #state{frontend=_FE, backend_out=BEO}=State) ->
-    lager:info("Getting a new-style zmq message!"),
+handle_info({zmq, BEO, Msg}, #state{frontend=FE, backend_out=BEO}=State) ->
+    gen_zmq:write(FE, {Msg, false}),
     {noreply, State};
-handle_info({zmq, BEO, Msg, Flags}, #state{frontend=FE, backend_out=BEO}=State) ->
-    lager:info("Writing a message: ~p", [Msg]),
-    case proplists:get_bool(rcvmore, Flags) of
-        true ->
-            gen_zmq:write(FE, {Msg, true});
-        false ->
-            gen_zmq:write(FE, {Msg, false})
-    end,
+handle_info({zmq, BEO, Msg, recvmore}, #state{frontend=FE, backend_out=BEO}=State) ->
+    gen_zmq:write(FE, {Msg, true}),
     {noreply, State};
 handle_info(Info, State) ->
     lager:info("Getting an unrecognized message! ~p", [Info]),
