@@ -15,7 +15,7 @@
                    "73a120788d1bdd5f82c4bbcb4875afa84638a75c"}},
        {gen_zmq,".*",
                 {git,"git@github.com:opscode/gen_zmq.git",
-                     "8db44e3892d30893756aa2b1d09940d1eae297e8"}},
+                  "10792c7a7bb4ac360433897dd50cf96f5878e3b0"}},
        {gen_leader,".*",
                    {git,"git://github.com/abecciu/gen_leader_revival.git",
                         "a119cb9a39f94254247962bce4616b6f607cca80"}},
@@ -60,7 +60,7 @@
                     "de939f5a937e3ace126090a2f6cd837bd2f5bc26"}},
        {pushy_common,".*",
                      {git,"git@github.com:opscode/pushy_common.git",
-                          "186c93f1382ad6d3853eb703402fe88bd25a647a"}},
+                          "240053b2df5b04a085fdb47fa62fae1d621c1df9"}},
        {mochiweb,".*",
                  {git,"git://github.com/basho/mochiweb",
                       "05b5b7eb7b830afbd9ba349a40bf40ba0462aa11"}},
@@ -77,4 +77,3 @@
              {git,"git://github.com/massemanet/eper.git",
                   "aa2b872d08ea93e5bfd58c4609081579e40a90b2"}}]}.
 {plugins,[rebar_lock_deps_plugin]}.
-
