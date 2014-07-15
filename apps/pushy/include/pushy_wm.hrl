@@ -43,7 +43,9 @@
                        requestor_type :: pushy_requestor_type(),
                        requestor_key :: any(),
 
-                       curve_public_key :: binary()
+                       curve_public_key :: binary(),
+
+                       job_pid :: pid()
                       }).
 
 -define(AUTH_SKEW, 900).
