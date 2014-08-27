@@ -27,6 +27,7 @@
          write_forbidden/2]).
 
 -include("pushy_wm.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 init([{incarnation_id, IncarnationId}]) ->
     {ok, #config_state{incarnation_id = IncarnationId,
