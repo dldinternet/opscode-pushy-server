@@ -135,7 +135,7 @@ do_send(#state{heartbeat_sock=HeartbeatSock, beat_count=Count, private_key=Priva
     Packets = ?TIME_IT(pushy_messaging, make_message, (proto_v2, rsa2048_sha1, PrivateKey, Msg2)),
     pushy_messaging:send_message(HeartbeatSock, Packets),
     %?debugVal(BodyFrame),
-    lager:debug("Heartbeat sent: header=~s,body=~s", Packets),
+    %lager:debug("Heartbeat sent: header=~s,body=~s", Packets),
     State#state{beat_count=Count+1}.
 
 %% ------------------------------------------------------------------

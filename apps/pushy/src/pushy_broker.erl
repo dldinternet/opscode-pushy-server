@@ -35,9 +35,11 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {frontend,
-                backend_out,
-                backend_in}).
+-record(state, {
+          frontend,
+          num_switches,
+          switches = []
+         }).
 
 start_link(PushyState) ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [PushyState], []).
@@ -47,9 +49,7 @@ init([#pushy_state{ctx=Ctx, curve_secret_key=Sec}]) ->
     erlang:process_flag(priority, high),
     CommandAddress = pushy_util:make_zmq_socket_addr(command_port),
     {ok, FE} = erlzmq:socket(Ctx, [router, {active, true}]),
-    {ok, BEO} = erlzmq:socket(Ctx, [pull, {active, true}]),
-    {ok, BEI} = erlzmq:socket(Ctx, [push, {active, false}]),
-    [erlzmq:setsockopt(Sock, linger, 0) || Sock <- [FE, BEO, BEI]],
+    erlzmq:setsockopt(FE, linger, 0),
     case envy:get(pushy, disable_curve_encryption, false, boolean) of
         false ->
             %% Configure front-end socket as Curve-encrypted
@@ -59,10 +59,12 @@ init([#pushy_state{ctx=Ctx, curve_secret_key=Sec}]) ->
         _ -> ok
     end,
     ok = erlzmq:bind(FE, CommandAddress),
-    ok = erlzmq:bind(BEO, ?PUSHY_BROKER_OUT),
-    ok = erlzmq:bind(BEI, ?PUSHY_BROKER_IN),
+    NumSwitches = envy:get(pushy, command_switches, 10, integer),
+    % We use a tuple, because the element/2 lookup is constant-time
+    % XXX Needs benchmarking to determine whether the constant it actually lower than a lists:nth call would be
+    SwitchNames = list_to_tuple([pushy_command_switch:make_name(N) || N <- lists:seq(1, NumSwitches)]),
     lager:info("~p has started.~n", [?MODULE]),
-    {ok, #state{frontend=FE, backend_out=BEO, backend_in=BEI}}.
+    {ok, #state{frontend=FE, num_switches = NumSwitches, switches = SwitchNames}}.
 
 handle_call(_Request, _From, State) ->
     {reply, ignored, State}.
@@ -71,23 +73,22 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 %% Incoming traffic goes to command switches
-handle_info({zmq, FE, Msg, Flags}, #state{frontend=FE, backend_in=BEI}=State) ->
-    case proplists:get_bool(rcvmore, Flags) of
-        true ->
-            erlzmq:send(BEI, Msg, [sndmore]);
-        false ->
-            erlzmq:send(BEI, Msg)
+handle_info({zmq, FE, Frame, [rcvmore]}, #state{frontend=FE}=State) ->
+    case pushy_messaging:receive_message_async(FE, Frame) of
+        [_Address, _Header, _Body] = Message->
+            lager:debug("RECV: ~s~nRECV: ~s~nRECV: ~s~n",
+                       [pushy_tools:bin_to_hex(_Address), _Header, _Body]),
+            send_to_switch(State, Message);
+        _Packets ->
+            lager:debug("Received runt/overlength message with ~n packets~n", [length(_Packets)])
     end,
     {noreply, State};
-
 %% Command switches send traffic out
-handle_info({zmq, BEO, Msg, Flags}, #state{frontend=FE, backend_out=BEO}=State) ->
-    case proplists:get_bool(rcvmore, Flags) of
-        true ->
-            erlzmq:send(FE, Msg, [sndmore]);
-        false ->
-            erlzmq:send(FE, Msg)
-    end,
+handle_info({frontend_out, RawMessage}, #state{frontend=FE}=State) ->
+    [_Address, _Header, _Body] = RawMessage,
+    lager:debug("SEND: ~s~nSEND: ~s~nSEND: ~s~n",
+               [pushy_tools:bin_to_hex(_Address), _Header, _Body]),
+    ok = pushy_messaging:send_message(FE, RawMessage),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -97,3 +98,12 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%% ------------------------------------------------------------------
+%% Internal Function Definitions
+%% ------------------------------------------------------------------
+
+send_to_switch(#state{num_switches = NumSwitches, switches = Switches}, [Addr, _, _] = Message) ->
+    SwitchNum = (erlang:phash2(Addr) rem NumSwitches) + 1,
+    Name = element(SwitchNum, Switches),
+    Name ! {frontend_in, Message}.
