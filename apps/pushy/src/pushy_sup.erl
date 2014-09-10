@@ -77,7 +77,8 @@ init([#pushy_state{ctx=_Ctx} = PushyState]) ->
                 ?WORKER(chef_keyring, []),
                 ?WORKER(pushy_heartbeat_generator, [PushyState]),
                 ?WORKER(pushy_broker, [PushyState])],
-    Switches = start_switches(1, PushyState, []),
+    NumSwitches = envy:get(pushy, command_switches, 10, integer),
+    Switches = start_switches(NumSwitches, PushyState, []),
     Workers2 = [?WORKER(pushy_process_monitor, [pushy_command_switch, pushy_command_switch:switch_processes_fun(), 1000]),
                 ?SUP(pushy_node_state_sup, []),
                 ?SUP(pushy_job_state_sup, []),
@@ -112,6 +113,6 @@ add_init_params(Other, _PushyState) ->
 start_switches(0, _PushyState, Switches) ->
     Switches;
 start_switches(Count, PushyState, Switches) ->
-    Id = list_to_atom("pushy_command_switch_" ++ integer_to_list(Count)),
+    Id = pushy_command_switch:make_name(Count),
     start_switches(Count - 1, PushyState,
                    [?MWORKER(Id, pushy_command_switch, [PushyState, Count]) | Switches]).

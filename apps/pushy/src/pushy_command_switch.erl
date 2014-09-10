@@ -31,14 +31,14 @@
 
 -export([start_link/2,
          send/1,
-         switch_processes_fun/0]).
+         switch_processes_fun/0,
+         make_name/1]).
 
 %% ------------------------------------------------------------------
 %% Private Exports - only exported for instrumentation
 %% ------------------------------------------------------------------
 
--export([do_receive/3,
-         do_send/2]).
+-export([do_send/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -59,12 +59,9 @@
 -include_lib("pushy_common/include/pushy_messaging.hrl").
 
 -compile([{parse_transform, lager_transform}]).
+-record(state, {}).
 
 -define(PUSHY_MULTI_SEND_CROSSOVER, 100).
-
--record(state,
-        {r_sock,
-         s_sock}).
 
 %% TODO: some refactoring around this seems necessary.  First, it seems that this is
 %% actually multiple messages (see pushy_job_state:do_send/3).  Turning it into a tuple for
@@ -76,7 +73,8 @@
 %% ------------------------------------------------------------------
 
 start_link(PushyState, Id) ->
-    gen_server:start_link(?MODULE, [PushyState, Id], []).
+    Name = make_name(Id),
+    gen_server:start_link({local, Name}, ?MODULE, [PushyState, Id], []).
 
 -spec send([binary()]) -> ok.
 send(Message) ->
@@ -100,21 +98,21 @@ switch_processes_fun()->
                     [extract_process_info(Switch) || Switch <- Switches]
             end
     end.
+
+%% @doc Generate an atom appropriate as a registered name for a command switch
+-spec make_name(integer()) -> atom().
+make_name(N) ->
+    list_to_atom("pushy_command_switch_" ++ integer_to_list(N)).
+
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
-init([#pushy_state{ctx=Ctx}, Id]) ->
-    {ok, Recv} = erlzmq:socket(Ctx, [pull, {active, true}]),
-    {ok, Send} = erlzmq:socket(Ctx, [push, {active, false}]),
-    [erlzmq:setsockopt(Sock, linger, 0) || Sock <- [Recv, Send]],
-    ok = erlzmq:connect(Recv, ?PUSHY_BROKER_IN),
-    ok = erlzmq:connect(Send, ?PUSHY_BROKER_OUT),
-    State = #state{r_sock=Recv, s_sock=Send},
+init([_PushyState, Id]) ->
     true = gproc:reg({n, l, {?MODULE, Id}}),
-    {ok, State}.
+    {ok, #state{}}.
 
-handle_call({send, Message}, _From, #state{}=State) ->
+handle_call({send, Message}, _From, State) ->
     NState = ?TIME_IT(?MODULE, do_send, (State, Message)),
     {reply, ok, NState};
 handle_call(_Request, _From, State) ->
@@ -123,14 +121,13 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({zmq, CommandSock, Frame, [rcvmore]}, State) ->
-    {noreply, ?TIME_IT(?MODULE, do_receive, (CommandSock, Frame, State))};
+handle_info({frontend_in, Msg}, State) ->
+     ?TIME_IT(pushy_node_state, recv_msg, (Msg)),
+    {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{r_sock=Recv, s_sock=Send}) ->
-    erlzmq:close(Recv),
-    erlzmq:close(Send),
+terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -140,29 +137,12 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-do_receive(CommandSock, Frame, State) ->
-    %% TODO: This needs a more graceful way of handling message sequences. I really feel like we need to
-    %% abstract out some more generalized routines to handle the message receipt process.
-    case pushy_messaging:receive_message_async(CommandSock, Frame) of
-        [_Address, _Header, _Body] = Message->
-            lager:debug("RECV: ~s~nRECV: ~s~nRECV: ~s~n",
-                       [pushy_tools:bin_to_hex(_Address), _Header, _Body]),
-            pushy_node_state:recv_msg(Message),
-            State;
-        _Packets ->
-            lager:debug("Received runt/overlength message with ~n packets~n", [length(_Packets)]),
-            State
-    end.
-
 %%%
 %%% Send a message to a single node
 %%%
 -spec do_send(#state{}, addressed_message()) -> #state{}.
-do_send(#state{s_sock=Send}=State, RawMessage) ->
-    [_Address, _Header, _Body] = RawMessage,
-    lager:debug("SEND: ~s~nSEND: ~s~nSEND: ~s~n",
-               [pushy_tools:bin_to_hex(_Address), _Header, _Body]),
-    ok = pushy_messaging:send_message(Send, RawMessage),
+do_send(State, RawMessage) ->
+    pushy_broker ! {frontend_out, RawMessage},
     State.
 
 -spec select_switch() -> {ok, pid()} | {error, no_switches}.
