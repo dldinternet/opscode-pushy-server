@@ -147,7 +147,7 @@ init([NodeRef, NodeAddr, IncarnationId]) ->
             %% We may also want to *not* automatically reanimate FSMs for nodes that aren't
             %% actively reporting; but rather keep them in a 'limbo' waiting for the first
             %% packet, and if one doesn't arrive within a certain time mark them down.
-            lager:error("Failed to register:~p(~p) for ~p (already exists as ~p?)",
+            lager:error("Failed to register name:~p(~p) for ~p (already exists as ~p?)",
                         [NodeRef, NodeAddr, self(), gproc:lookup_pid({n,l,GprocName}) ]),
             {stop, state_transition(init, shutdown, State), State}
     end.
