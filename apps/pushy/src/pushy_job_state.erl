@@ -112,10 +112,6 @@ init({#pushy_job{id = JobId, job_nodes = JobNodeList, opts = Opts} = Job, Reques
                       OptDir, OptEnv, OptFile, OptCapture),
             listen_for_down_nodes(dict:fetch_keys(JobNodes)),
 
-            lager:debug([{job_id,Job#pushy_job.id}],
-                        "Job ~p starting '~p' on ~p nodes, with timeout ~ps",
-                        [JobId, Job#pushy_job.command, length(JobNodeList), Job#pushy_job.run_timeout]),
-
             % Start voting--if there are no nodes, the job finishes immediately.
             case start_voting(State) of
                 {next_state, StateName, State2} -> {ok, StateName, State2};
@@ -382,8 +378,6 @@ maybe_finished_running(State) ->
     end.
 
 start_voting(#state{job = Job, voting_timeout = VotingTimeout} = State) ->
-    lager:debug([{job_id,Job#pushy_job.id}],
-                "Job ~p -> voting", [Job#pushy_job.id]),
     Job2 = Job#pushy_job{status = voting},
     State2 = State#state{job = Job2},
     pushy_object:update_object(update_job, Job2, Job2#pushy_job.id),
@@ -392,8 +386,6 @@ start_voting(#state{job = Job, voting_timeout = VotingTimeout} = State) ->
     maybe_finished_voting(State2).
 
 start_running(#state{job = Job} = State) ->
-    lager:debug([{job_id,Job#pushy_job.id}],
-                "Job ~p -> running", [Job#pushy_job.id]),
     Job2 = Job#pushy_job{status = running},
     State2 = State#state{job = Job2},
     pushy_object:update_object(update_job, Job2, Job2#pushy_job.id),
@@ -404,8 +396,6 @@ start_running(#state{job = Job} = State) ->
 finish_job(Reason, #state{job = Job} = State) ->
     % All nodes are guaranteed to be in terminal state by this point, so no
     % nodes need to be sent to rehab.
-    lager:debug([{job_id,Job#pushy_job.id}],
-                "Job ~p -> ~p", [Job#pushy_job.id, Reason]),
     State1 = add_job_complete_event(State, Reason),
     post_to_subscribers(State1, done),
     Job2 = Job#pushy_job{status = Reason},
@@ -455,7 +445,6 @@ listen_for_down_nodes([NodeRef|JobNodes]) ->
 
 -spec send_run(#state{}) -> 'ok'.
 send_run(#state{job = Job} = State) ->
-    lager:debug([{job_id,Job#pushy_job.id}], "Sending run to nodes in ready state"),
     ReadyNodeRefs = nodes_in_state([ready], State),
     send_msg_to_nodes(<<"run">>, [], Job, ReadyNodeRefs).
 
@@ -464,7 +453,6 @@ get_attr_list(Name, Val) -> [{Name, Val}].
 
 -spec send_commit(#state{}) -> 'ok'.
 send_commit(#state{job_host=Host, job = Job, job_nodes = JobNodes}) ->
-    lager:debug([{job_id,Job#pushy_job.id}], "Sending commit to all nodes"),
     NodeRefs = dict:fetch_keys(JobNodes),
     Opts = Job#pushy_job.opts,
     % XX Consider attaching file in separate frame
@@ -483,7 +471,6 @@ send_msg_to_nodes(Type, MoreAttrs, Job, NodeRefs) ->
 
 -spec send_node_event(object_id(), node_ref(), job_event()) -> ok | not_found.
 send_node_event(JobId, NodeRef, {Type, Event}) ->
-    lager:debug("---------> job:node_event(~p, ~p, ~p, ~p)", [JobId, NodeRef, Type, Event]),
     case pushy_job_state_sup:get_process(JobId) of
         Pid when is_pid(Pid) ->
             gen_fsm:send_event(Pid, {Type, Event, NodeRef});

@@ -241,8 +241,7 @@ handle_info({'DOWN', _MRef, _Type, Pid, _Reason}, StateName, #state{watchers=Wat
 handle_info(_Info, StateName, State) ->
     {next_state, StateName, State}.
 
-terminate(_Reason, _StateName, #state{node_ref = NodeRef}) ->
-    lager:debug("Shutting Down: ~p~n", [NodeRef]),
+terminate(_Reason, _StateName, _State) ->
     ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -298,7 +297,6 @@ force_abort(State) ->
 
 state_transition(Current, New,
         #state{node_ref=NodeRef, watchers=Watchers, availability=Availability}) ->
-    lager:debug("~p transitioning from ~p to ~p~n", [NodeRef, Current, New]),
     GprocName = pushy_node_state_sup:mk_gproc_name(NodeRef),
     gproc:set_value({n, l, GprocName}, Availability),
     notify_watchers(Watchers, NodeRef, Current, New),
@@ -367,7 +365,7 @@ maybe_process_and_dispatch_message(CurrentState, State, Message) ->
                                    State :: #state{} ) -> {ok, #state{} }.
 process_and_dispatch_message([Address, Header, Body], State) ->
     KeyFetch = fun key_fetch/2,
-    try ?TIME_IT(pushy_messaging, parse_message, (Address, Header, Body, KeyFetch)) of
+    try pushy_messaging:parse_message(Address, Header, Body, KeyFetch) of
         {ok, #pushy_message{} = Msg} ->
             {ok, process_message(State, Msg)};
         {error, #pushy_message{validated=bad_sig}} ->
@@ -389,12 +387,9 @@ process_and_dispatch_message([Address, Header, Body], State) ->
 
 -spec process_message(State :: #state{},
                       Message :: #pushy_message{}) -> #state{}.
-process_message(#state{node_ref=NodeRef, node_addr=CurAddr} = State, #pushy_message{address=NewAddr} = Message)
+process_message(#state{node_addr=CurAddr} = State, #pushy_message{address=NewAddr} = Message)
   when CurAddr =/= NewAddr ->
     %% Our address has changed. By this point we've validated the message, so we can trust the address
-    lager:debug("Address change for ~p '~s' to '~s'~n",
-               [NodeRef, pushy_tools:bin_to_hex(CurAddr),
-                pushy_tools:bin_to_hex(NewAddr)]),
     GprocNewAddr = pushy_node_state_sup:mk_gproc_addr(NewAddr),
     gproc:reg({n, l, GprocNewAddr}),
     GprocCurAddr = pushy_node_state_sup:mk_gproc_addr(CurAddr),
@@ -408,8 +403,6 @@ process_message(#state{node_ref=NodeRef, node_addr=Address} = State, #pushy_mess
     BinaryType = ej:get({<<"type">>}, Data),
     IncarnationId = ej:get({<<"incarnation_id">>}, Data),
     Type = message_type_to_atom(BinaryType),
-    lager:debug("Received message for Node ~p Type ~p (address ~p)",
-                [NodeRef, BinaryType, pushy_tools:bin_to_hex(Address)]),
     case Type of
         undefined ->
             lager:error("Status message for node ~p was missing type field!~n", [NodeRef]),
@@ -428,8 +421,7 @@ process_message(#state{node_ref=NodeRef, node_addr=Address} = State, #pushy_mess
                       node_ref(),
                       incarnation_id(),
                       heartbeat) -> #state{}.
-send_node_event(State, JobId, NodeRef, IncarnationId, heartbeat) ->
-    lager:debug("Received heartbeat for node ~p with job id ~p", [NodeRef, JobId]),
+send_node_event(State, JobId, _NodeRef, IncarnationId, heartbeat) ->
     case JobId /= null andalso pushy_job_state_sup:get_process(JobId) == not_found of
         true ->
             gen_fsm:send_event(self(), do_rehab);
@@ -490,7 +482,7 @@ do_send(#state{node_addr=NodeAddr, node_ref=NodeRef, sequence_no = SeqNo} = Stat
     State2 = State#state{sequence_no = SeqNo+1},
 
     {ok, Key} = get_key_for_method(Method, NodeRef),
-    Packets = ?TIME_IT(pushy_messaging, make_message, (proto_v2, Method, Key, Message2)),
+    Packets = pushy_messaging:make_message(proto_v2, Method, Key, Message2),
     ok = pushy_command_switch:send([NodeAddr | Packets]),
     State2.
 

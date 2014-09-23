@@ -109,7 +109,7 @@ handle_call(_Request, _From, State) ->
     {noreply, ok, State}.
 
 handle_cast(heartbeat, State) ->
-    {noreply, ?TIME_IT(?MODULE, do_send, (State))};
+    {noreply, do_send(State)};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -132,10 +132,9 @@ do_send(#state{heartbeat_sock=HeartbeatSock, beat_count=Count, private_key=Priva
             {incarnation_id, IncarnationId}
            ]},
     Msg2 = pushy_messaging:insert_timestamp_and_sequence(Msg, Count),
-    Packets = ?TIME_IT(pushy_messaging, make_message, (proto_v2, rsa2048_sha1, PrivateKey, Msg2)),
+    Packets = pushy_messaging:make_message(proto_v2, rsa2048_sha1, PrivateKey, Msg2),
     pushy_messaging:send_message(HeartbeatSock, Packets),
     %?debugVal(BodyFrame),
-    lager:debug("Heartbeat sent: header=~s,body=~s", Packets),
     State#state{beat_count=Count+1}.
 
 %% ------------------------------------------------------------------

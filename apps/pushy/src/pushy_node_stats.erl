@@ -143,10 +143,4 @@ advance_interval(#metric{avg=Avg, interval_start=StartI, heartbeats=Hb} = M, ICo
     %% The first interval may have accumulated heartbeats. Later intervals will not and can be
     %% aggregated into one step using pow.
     NAvg = ((Avg * ?HISTORY_WEIGHT) + (Hb * ?NOW_WEIGHT)) * math:pow(?HISTORY_WEIGHT, ICount-1),
-    folsom_metrics:notify(app_metric(<<"health">>), NAvg, histogram),
-    folsom_metrics:notify(app_metric(<<"interval">>), ICount, histogram),
-    folsom_metrics:notify(app_metric(<<"heartbeat">>), Hb, histogram),
     M#metric{avg=NAvg, interval_start=NextI, heartbeats=0}.
-
-app_metric(Name) ->
-    pushy_metrics:app_metric(?MODULE, Name).

@@ -115,7 +115,7 @@ init([#pushy_state{ctx=Ctx}, Id]) ->
     {ok, State}.
 
 handle_call({send, Message}, _From, #state{}=State) ->
-    NState = ?TIME_IT(?MODULE, do_send, (State, Message)),
+    NState = do_send(State, Message),
     {reply, ok, NState};
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -124,7 +124,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({zmq, CommandSock, Frame, [rcvmore]}, State) ->
-    {noreply, ?TIME_IT(?MODULE, do_receive, (CommandSock, Frame, State))};
+    {noreply, do_receive(CommandSock, Frame, State)};
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -145,8 +145,6 @@ do_receive(CommandSock, Frame, State) ->
     %% abstract out some more generalized routines to handle the message receipt process.
     case pushy_messaging:receive_message_async(CommandSock, Frame) of
         [_Address, _Header, _Body] = Message->
-            lager:debug("RECV: ~s~nRECV: ~s~nRECV: ~s~n",
-                       [pushy_tools:bin_to_hex(_Address), _Header, _Body]),
             pushy_node_state:recv_msg(Message),
             State;
         _Packets ->
@@ -160,8 +158,6 @@ do_receive(CommandSock, Frame, State) ->
 -spec do_send(#state{}, addressed_message()) -> #state{}.
 do_send(#state{s_sock=Send}=State, RawMessage) ->
     [_Address, _Header, _Body] = RawMessage,
-    lager:debug("SEND: ~s~nSEND: ~s~nSEND: ~s~n",
-               [pushy_tools:bin_to_hex(_Address), _Header, _Body]),
     ok = pushy_messaging:send_message(Send, RawMessage),
     State.
 
